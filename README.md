@@ -1,1 +1,1 @@
-# Wemix Token Contract solidity source code and test
+# Wemix-Token contract solidity source and test code
