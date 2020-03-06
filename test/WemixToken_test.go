@@ -72,17 +72,10 @@ func toBytes(t *testing.T, data interface{}) []byte {
 }
 
 //After compiling and distributing the contract, return the Contract pointer object.
-func depoly(t *testing.T, log bool) *backend.Contract {
+func depoly(t *testing.T) *backend.Contract {
 	contract, err := backend.NewContract(contractFile, contractName)
 	if err != nil {
 		t.Fatal(err)
-	} else if log == true {
-		t.Log("contract source file:", contract.File)
-		t.Log("contract name:", contract.Name)
-		t.Log("contract Language:", contract.Info.Language)
-		t.Log("contract LanguageVersion", contract.Info.LanguageVersion)
-		t.Log("contract CompilerVersion", contract.Info.CompilerVersion)
-		t.Log("contract bytecode size:", len(contract.Code))
 	}
 
 	ecoFundKey, _ := crypto.GenerateKey()
@@ -95,21 +88,28 @@ func depoly(t *testing.T, log bool) *backend.Contract {
 	}
 	if err := contract.Deploy(args...); err != nil {
 		t.Fatal(err)
-	} else if log == true {
-		t.Log("ok > contract address deployed", contract.Address.Hex())
 	}
 	return contract
 }
 
 //Test to compile and deploy the contract
 func TestDeploy(t *testing.T) {
-	depoly(t, true)
+	contract := depoly(t)
+
+	t.Log("contract source file:", contract.File)
+	t.Log("contract name:", contract.Name)
+	t.Log("contract Language:", contract.Info.Language)
+	t.Log("contract LanguageVersion", contract.Info.LanguageVersion)
+	t.Log("contract CompilerVersion", contract.Info.CompilerVersion)
+	t.Log("contract bytecode size:", len(contract.Code))
+
+	t.Log("ok > contract address deployed", contract.Address.Hex())
 }
 
 //Test to verify the variables of the deployed contract.
 //Fatal if the expected value and the actual contract value differ.
 func TestVariable(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 
 	check := func(method string, expected interface{}) {
 		if ret, err := contract.LowCall(method); err != nil {
@@ -152,14 +152,12 @@ func TestVariable(t *testing.T) {
 
 //Test to execute onlyOwner modifier method.
 func TestExecute(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 
 	execute := func(methodExceptCall string, new interface{}) {
 		changeMethod := "change_" + methodExceptCall
 
-		if origin, err := contract.LowCall(methodExceptCall); err != nil {
-			t.Fatal(err)
-		} else if r, err := contract.Execute(nil, changeMethod, new); err != nil {
+		if r, err := contract.Execute(nil, changeMethod, new); err != nil {
 			t.Fatal(err)
 		} else if r.Status != 1 {
 			t.Fatalf("failed > execute %s. receipt.status : %d", changeMethod, r.Status)
@@ -171,17 +169,6 @@ func TestExecute(t *testing.T) {
 				t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, new.(common.Address).Hex(), changed[0].(common.Address).Hex())
 			default:
 				t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, new, changed[0])
-			}
-		} else if r, err := contract.Execute(nil, changeMethod, origin[0]); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > execute %s. receipt.status : %d", changeMethod, r.Status)
-		} else {
-			switch new.(type) {
-			case common.Address:
-				t.Log(changeMethod, changed[0].(common.Address).Hex(), "ok")
-			default:
-				t.Log(changeMethod, changed[0], "ok")
 			}
 		}
 	}
@@ -198,7 +185,7 @@ func TestExecute(t *testing.T) {
 
 //test to run onlyOwner modifier method under non-owner account.
 func TestOwner(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 
 	expecedFail := func(key *ecdsa.PrivateKey, method string, new interface{}) {
 		if r, err := contract.Execute(key, method, new); err != nil {
@@ -241,18 +228,7 @@ func TestOwner(t *testing.T) {
 
 //Test to run addAllowedStaker method.
 func TestAllowedPartner(t *testing.T) {
-	contract := depoly(t, false)
-
-	origin_minBlockWaitingWithdrawal := (*big.Int)(nil)
-	if err := contract.Call(&origin_minBlockWaitingWithdrawal, "minBlockWaitingWithdrawal"); err != nil {
-		t.Fatal(err)
-	}
-
-	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int)); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatal("failed > execute change_minBlockWaitingWithdrawal")
-	}
+	contract := depoly(t)
 
 	//make an error occur
 	if r, err := contract.Execute(nil, "stake", new(big.Int)); err != nil {
@@ -261,39 +237,34 @@ func TestAllowedPartner(t *testing.T) {
 		t.Fatalf("failed > addAllowedStaker needed before stake but accepted. receipt.Status : %d", r.Status)
 	}
 
+	//make partner
+	partnerKey, _ := crypto.GenerateKey()
+	partner := crypto.PubkeyToAddress(partnerKey.PublicKey)
+
 	//addAllowedPartner
-	if r, err := contract.Execute(nil, "addAllowedPartner", contract.Owner); err != nil {
+	if r, err := contract.Execute(nil, "addAllowedPartner", partner); err != nil {
 		t.Fatal(err)
 	} else if r.Status != 1 {
 		t.Fatalf("failed > addAllowedPartner : %s, receipt.Status : %d ", contract.Address.Hex(), r.Status)
 	}
 
-	serial := (*big.Int)(nil)
-	if r, err := contract.Execute(nil, "stake", new(big.Int)); err != nil {
+	topics := []common.Hash{}
+	if r, err := contract.Execute(nil, "stakeDelegated", partner, new(big.Int)); err != nil {
 		t.Fatal(err)
 	} else if r.Status != 1 {
 		t.Fatalf("failed > not accepted but execute addAllowedStake before")
 	} else {
 		for _, g := range r.Logs {
 			if g.Topics[0] == contract.Abi.Events["Staked"].Id() {
-				serial = g.Topics[3].Big()
+				topics = append(topics, g.Topics...)
 			}
 		}
-		if serial == nil {
-			t.Fatal("failed > not found stake index")
+		if common.BytesToAddress(topics[1].Bytes()) != partner {
+			t.Fatal("failed > dismatch partner after stake")
 		}
-	}
-
-	if r, err := contract.Execute(nil, "withdraw", serial); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > execute withdraw. receipt.Status: %d", r.Status)
-	}
-
-	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", origin_minBlockWaitingWithdrawal); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > execute change_minBlockWaitingWithdrawal, receipt.Status : %d", r.Status)
+		if common.BytesToAddress(topics[2].Bytes()) != contract.Owner {
+			t.Fatal("failed > dismatch payer after stake")
+		}
 	}
 
 	t.Log("ok > test addAllowedPartner")
@@ -301,7 +272,7 @@ func TestAllowedPartner(t *testing.T) {
 
 //test staking
 func TestStake(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 
 	testStake(t, contract, true)
 }
@@ -315,24 +286,15 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 		return ret
 	}()
 
-	//withdrawalWaitingMinBlockd을 짧게 바꿈.
-	minBlockWaitingWithdrawal := func(newBlock uint64) *big.Int {
-		if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(newBlock)); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > execute change_minBlockWaitingWithdrawal, receipt.Status : %d", r.Status)
-		}
-		ret := (*big.Int)(nil)
-		if err := contract.Call(&ret, "minBlockWaitingWithdrawal"); err != nil {
-			t.Fatal(err)
-		}
-		return ret
-	}(1000)
+	minBlockWaitingWithdrawal := (*big.Int)(nil)
+	if err := contract.Call(&minBlockWaitingWithdrawal, "minBlockWaitingWithdrawal"); err != nil {
+		t.Fatal(err)
+	}
 
 	countExecuteStake := int64(0)
 	partnerKeyMap := typeKeyMap{}
 
-	stake := func(delegation bool, partner common.Address, payerKey *ecdsa.PrivateKey, waitBlock *big.Int) *typePartner {
+	_stake := func(delegation bool, partner common.Address, payerKey *ecdsa.PrivateKey, waitBlock *big.Int) *typePartner {
 		//addAllowedPartner
 		if r, err := contract.Execute(nil, "addAllowedPartner", partner); err != nil {
 			t.Fatal(err)
@@ -396,7 +358,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 		waitBlock := new(big.Int).Mul(minBlockWaitingWithdrawal, new(big.Int).SetInt64(int64(i+1)))
 
 		for {
-			result := stake(false, partner, partnerKey, waitBlock)
+			result := _stake(false, partner, partnerKey, waitBlock)
 
 			if result.Payer != result.Partner {
 				t.Fatalf("failed > dismatch partner:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
@@ -424,7 +386,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 		waitBlock := new(big.Int).Mul(minBlockWaitingWithdrawal, new(big.Int).SetInt64(int64(i+1)))
 
 		for {
-			result := stake(true, partner, contract.OwnerKey, waitBlock)
+			result := _stake(true, partner, contract.OwnerKey, waitBlock)
 
 			if result.Payer == result.Partner {
 				t.Fatalf("failed > equal Payer:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
@@ -454,7 +416,15 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 
 //test to withdraw
 func TestWithdraw(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
+
+	//withdrawalWaitingMinBlockd을 짧게 바꿈.
+	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(1000)); err != nil {
+		t.Fatal(err)
+	} else if r.Status != 1 {
+		t.Fatalf("failed > execute change_minBlockWaitingWithdrawal, receipt.Status : %d", r.Status)
+	}
+
 	partnerKeyMap := testStake(t, contract, false)
 
 	stakes := typePartnerSlice{}
@@ -680,7 +650,7 @@ func testMint(t *testing.T, contract *backend.Contract) {
 
 //After registering block partners, do minting test and check the amount of minting.
 func TestMint(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 	testStake(t, contract, false)
 
 	testMint(t, contract)
@@ -688,7 +658,7 @@ func TestMint(t *testing.T) {
 
 //Test minting without block partner and check minting amount.
 func TestMintWithoutPartner(t *testing.T) {
-	contract := depoly(t, false)
+	contract := depoly(t)
 
 	testMint(t, contract)
 }
