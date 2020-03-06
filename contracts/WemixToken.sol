@@ -689,9 +689,9 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     }
 
     function _stake(address _partner, uint256 _blockWaitingWithdrawal) private {     
-        require(_partner != address(0));
+        require(_partner != address(0), "WemixToken: _partner is the zero address");
         //only pre-approved addresses are allowed
-        require(allowedPartners[_partner] == true);
+        require(allowedPartners[_partner] == true, "WemixToken: only pre-approved addresses are allowed");
         allowedPartners[_partner] = false;
 
          //if _blockWaitingWithdrawal is lower than the minimum, adjust it to the minimum.
@@ -721,15 +721,15 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     //withdraw the staking token.
     function withdraw(uint256 _serial) public {   
         uint256 _subIndex = allPartnersIndex[_serial];
-        require(_subIndex < allPartners.length);
+        require(_subIndex < allPartners.length, "WemixToken: _subIndex equal or higher than allPartners.length");
 
         Partner memory _p = allPartners[_subIndex];
-        require(_p.serial == _serial);
+        require(_p.serial == _serial, "WemixToken: _p.serial is different with _serialh");
   
         //only payer can withdraw
-        require(_p.payer == _msgSender());   
+        require(_p.payer == _msgSender(), "WemixToken: _p.payer is different with _msgSender()");  
         //check if the withdrawal wait block has passed,
-        require(_p.blockStaking + _p.blockWaitingWithdrawal <= block.number); 
+        require(_p.blockStaking + _p.blockWaitingWithdrawal <= block.number, "WemixToken: _p.blockStaking + _p.blockWaitingWithdrawal is higher than block.number");  
 
         //send staking token to the payer,
         super._transfer(address(this), _p.payer, _p.balanceStaking);
@@ -749,7 +749,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
 
     //mint tokens every block.
     function mint() public {   
-        require(blockToMint < block.number);
+        require(blockToMint < block.number, "WemixToken: _p.blockToMint is equal or higher than  than block.number"); 
         uint _count = 0;
 
         //mintable up to maxTimesMintingOnce
@@ -774,7 +774,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     } 
 
     function addAllowedPartner(address _account) public onlyOwner {
-       require(_account != address(0));
+       require(_account != address(0), "WemixToken: _account is the zero address");
         allowedPartners[_account] = true;
     }
 
@@ -791,7 +791,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     } 
 
     function partnerByIndex(uint _index) public view returns (uint256 serial, address partner, address payer, uint blockStaking, uint blockWaitingWithdrawal, uint balanceStaking) {
-        require(_index < allPartners.length);
+        require(_index < allPartners.length, "WemixToken: _index is equal or higher than allPartners.length");
         
         Partner memory _p = allPartners[_index];
 
@@ -809,12 +809,12 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     }
 
     function change_ecoFund(address _account) public  onlyOwner{
-        require(_account != address(0));
+        require(_account != address(0), "WemixToken: _account is the zero address");
         ecoFund = _account;
     } 
 
     function change_wemix(address _account) public  onlyOwner{
-        require(_account != address(0));
+        require(_account != address(0), "WemixToken: _account is the zero address");
         wemix = _account;
     } 
 
