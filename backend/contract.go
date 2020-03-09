@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+//Contract struct holds data before compilation and information after compilation.
 type Contract struct {
 	File              string
 	Name              string
@@ -31,6 +32,7 @@ type Contract struct {
 	BlockDeployed     *big.Int
 }
 
+//NewContract is to create simulatied backend and compile solidity code
 func NewContract(file, name string) (*Contract, error) {
 
 	ownerKey, _ := crypto.GenerateKey()
@@ -38,6 +40,7 @@ func NewContract(file, name string) (*Contract, error) {
 	r := &Contract{
 		File: file,
 		Name: name,
+		//creates a new binding backend using a simulated blockchain
 		Backend: backends.NewSimulatedBackend(
 			nil,
 			10000000,
@@ -45,6 +48,7 @@ func NewContract(file, name string) (*Contract, error) {
 		OwnerKey: ownerKey,
 		Owner:    crypto.PubkeyToAddress(ownerKey.PublicKey),
 	}
+	//compile
 	if err := r.compile(); err != nil {
 		return nil, err
 	}
@@ -58,11 +62,12 @@ func (p *Contract) compile() error {
 		return err
 	}
 
+	//Get the contract to test from the compiled contracts.
 	contract, ok := contracts[fmt.Sprintf("%s:%s", p.File, p.Name)]
 	if ok == false {
 		fmt.Errorf("%s contract is not here", p.Name)
 	}
-
+	//make abi.ABI instance
 	abiBytes, err := json.Marshal(contract.Info.AbiDefinition)
 	if err != nil {
 		return err
@@ -77,20 +82,24 @@ func (p *Contract) compile() error {
 	return nil
 }
 
+//Deploy makes creation contract tx and receives the result by receit.
 func (p *Contract) Deploy(args ...interface{}) error {
-	input, err := p.Abi.Pack("", args...)
+	input, err := p.Abi.Pack("", args...) //constructor's inputs
 	if err != nil {
 		return err
 	}
 
-	p.ConstructorInputs = args
+	p.ConstructorInputs = args // Save for later checkout
 
+	//make tx for contract creation
 	tx := types.NewContractCreation(0, big.NewInt(0), 3000000, big.NewInt(0), append(p.Code, input...))
+	//signing
 	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, p.OwnerKey)
-
+	//sned tx to simulated backend
 	if err := p.Backend.SendTransaction(context.Background(), tx); err != nil {
 		return err
 	}
+	//make block
 	p.Backend.Commit()
 
 	//get contract address through receipt
@@ -101,11 +110,13 @@ func (p *Contract) Deploy(args ...interface{}) error {
 	if receipt.Status != 1 {
 		return fmt.Errorf("status of deploy tx receipt: %v", receipt.Status)
 	}
+	//get contract's address and block deployed from the receipt
 	p.Address = receipt.ContractAddress
 	p.BlockDeployed = receipt.BlockNumber
 	return nil
 }
 
+// Call is Invokes a view method with args and then receive the result unpacked.
 func (p *Contract) Call(result interface{}, method string, args ...interface{}) error {
 	if input, err := p.Abi.Pack(method, args...); err != nil {
 		return err
@@ -122,6 +133,7 @@ func (p *Contract) Call(result interface{}, method string, args ...interface{}) 
 	return nil
 }
 
+//LowCall returns method's output in a different way than Call.
 func (p *Contract) LowCall(method string, args ...interface{}) ([]interface{}, error) {
 	if input, err := p.Abi.Pack(method, args...); err != nil {
 		return nil, err
@@ -139,6 +151,8 @@ func (p *Contract) LowCall(method string, args ...interface{}) ([]interface{}, e
 	}
 }
 
+//Execute executes the contract's method. For that, take tx with singer's key, method and inputs,
+//and then send it to the simulated backend, and return the receipt.
 func (p *Contract) Execute(key *ecdsa.PrivateKey, method string, args ...interface{}) (*types.Receipt, error) {
 	if key == nil {
 		key = p.OwnerKey
