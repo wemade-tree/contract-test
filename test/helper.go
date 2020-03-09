@@ -80,7 +80,7 @@ func expecedFail(t *testing.T, contract *backend.Contract, key *ecdsa.PrivateKey
 	}
 }
 
-//checks if the contract execution is successful.
+//checks if the contract execution is successful..
 func expecedSuccess(t *testing.T, contract *backend.Contract, key *ecdsa.PrivateKey, method string, arg ...interface{}) {
 	if r, err := contract.Execute(key, method, arg...); err != nil {
 		t.Fatal(err)
