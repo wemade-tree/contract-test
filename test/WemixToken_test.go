@@ -1,28 +1,17 @@
 package test
 
 import (
-	"bytes"
 	"crypto/ecdsa"
-	"encoding/gob"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-
 	"github.com/wemade-tree/contract-test/backend"
 )
 
-//Contract source files and contracts to test
-const (
-	contractFile = "../contracts/WemixToken.sol"
-	contractName = "WemixToken"
-)
-
 type (
-	typeKeyMap map[common.Address]*ecdsa.PrivateKey
-
 	//Structure to store block partner information
 	typePartner struct {
 		Serial                 *big.Int
@@ -62,18 +51,9 @@ func (p *typePartnerSlice) loadAllStake(t *testing.T, contract *backend.Contract
 	t.Logf("ok > loadAllStake, partners number: %d", partnersNumber)
 }
 
-//Converts the given data into a byte slice and returns it.
-func toBytes(t *testing.T, data interface{}) []byte {
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(data); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
-}
-
 //After compiling and distributing the contract, return the Contract pointer object.
-func depoly(t *testing.T) *backend.Contract {
-	contract, err := backend.NewContract(contractFile, contractName)
+func depolyWemix(t *testing.T) *backend.Contract {
+	contract, err := backend.NewContract("../contracts/WemixToken.sol", "WemixToken")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +73,8 @@ func depoly(t *testing.T) *backend.Contract {
 }
 
 //Test to compile and deploy the contract
-func TestDeploy(t *testing.T) {
-	contract := depoly(t)
+func TestWemixDeploy(t *testing.T) {
+	contract := depolyWemix(t)
 
 	t.Log("contract source file:", contract.File)
 	t.Log("contract name:", contract.Name)
@@ -108,127 +88,65 @@ func TestDeploy(t *testing.T) {
 
 //Test to verify the variables of the deployed contract.
 //Fatal if the expected value and the actual contract value differ.
-func TestVariable(t *testing.T) {
-	contract := depoly(t)
+func TestWemixVariable(t *testing.T) {
+	contract := depolyWemix(t)
 
-	check := func(method string, expected interface{}) {
-		if ret, err := contract.LowCall(method); err != nil {
-			t.Fatal(err)
-		} else if bytes.Equal(toBytes(t, ret[0]), toBytes(t, expected)) == false {
-			t.Fatalf("failed > dismatch %s : expected %v , got %v", method, expected, ret[0])
-		} else {
-			switch expected.(type) {
-			case common.Address:
-				t.Log(method, ret[0].(common.Address).Hex())
-			default:
-				t.Log(method, ret[0])
-			}
-		}
-	}
-
-	toBig := func(value10 string) *big.Int {
-		ret, b := new(big.Int).SetString(value10, 10)
-		if b == false {
-			t.Fatal("failed > set string to *big.Int")
-		}
-		return ret
-	}
-
-	check("name", "WEMIX TOKEN")
-	check("symbol", "WEMIX")
-	check("decimals", uint8(18))
-	check("totalSupply", toBig("1000000000000000000000000000"))
-	check("unitStaking", toBig("5000000000000000000000000"))
-	check("minBlockWaitingWithdrawal", new(big.Int).SetUint64(7776000))
-	check("maxTimesMintingOnce", new(big.Int).SetUint64(50))
-	check("ecoFund", contract.ConstructorInputs[0].(common.Address))
-	check("wemix", contract.ConstructorInputs[1].(common.Address))
-	check("nextPartnerToMint", new(big.Int))
-	check("mintToPartner", new(big.Int).SetUint64(500000000000000000))
-	check("mintToEcoFund", new(big.Int).SetUint64(250000000000000000))
-	check("mintToWemix", new(big.Int).SetUint64(250000000000000000))
-	check("blockToMint", contract.BlockDeployed)
+	checkVariable(t, contract, "name", "WEMIX TOKEN")
+	checkVariable(t, contract, "symbol", "WEMIX")
+	checkVariable(t, contract, "decimals", uint8(18))
+	checkVariable(t, contract, "totalSupply", toBig(t, "1000000000000000000000000000"))
+	checkVariable(t, contract, "unitStaking", toBig(t, "5000000000000000000000000"))
+	checkVariable(t, contract, "minBlockWaitingWithdrawal", new(big.Int).SetUint64(7776000))
+	checkVariable(t, contract, "maxTimesMintingOnce", new(big.Int).SetUint64(50))
+	checkVariable(t, contract, "ecoFund", contract.ConstructorInputs[0].(common.Address))
+	checkVariable(t, contract, "wemix", contract.ConstructorInputs[1].(common.Address))
+	checkVariable(t, contract, "nextPartnerToMint", new(big.Int))
+	checkVariable(t, contract, "mintToPartner", new(big.Int).SetUint64(500000000000000000))
+	checkVariable(t, contract, "mintToEcoFund", new(big.Int).SetUint64(250000000000000000))
+	checkVariable(t, contract, "mintToWemix", new(big.Int).SetUint64(250000000000000000))
+	checkVariable(t, contract, "blockToMint", contract.BlockDeployed)
 }
 
 //Test to execute onlyOwner modifier method.
-func TestExecute(t *testing.T) {
-	contract := depoly(t)
+func TestWemixExecute(t *testing.T) {
+	contract := depolyWemix(t)
 
-	execute := func(methodExceptCall string, new interface{}) {
-		changeMethod := "change_" + methodExceptCall
-
-		if r, err := contract.Execute(nil, changeMethod, new); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > execute %s. receipt.status : %d", changeMethod, r.Status)
-		} else if changed, err := contract.LowCall(methodExceptCall); err != nil {
-			t.Fatal(err)
-		} else if bytes.Equal(toBytes(t, changed[0]), toBytes(t, new)) == false {
-			switch new.(type) {
-			case common.Address:
-				t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, new.(common.Address).Hex(), changed[0].(common.Address).Hex())
-			default:
-				t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, new, changed[0])
-			}
-		}
-	}
-
-	execute("unitStaking", big.NewInt(1))
-	execute("minBlockWaitingWithdrawal", big.NewInt(1))
-	execute("maxTimesMintingOnce", big.NewInt(1))
-	execute("ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
-	execute("wemix", common.HexToAddress("0x0000000000000000000000000000000000000001"))
-	execute("mintToPartner", big.NewInt(1))
-	execute("mintToEcoFund", big.NewInt(1))
-	execute("mintToWemix", big.NewInt(1))
+	executeChangeMethod(t, contract, "unitStaking", big.NewInt(1))
+	executeChangeMethod(t, contract, "minBlockWaitingWithdrawal", big.NewInt(1))
+	executeChangeMethod(t, contract, "maxTimesMintingOnce", big.NewInt(1))
+	executeChangeMethod(t, contract, "ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
+	executeChangeMethod(t, contract, "wemix", common.HexToAddress("0x0000000000000000000000000000000000000001"))
+	executeChangeMethod(t, contract, "mintToPartner", big.NewInt(1))
+	executeChangeMethod(t, contract, "mintToEcoFund", big.NewInt(1))
+	executeChangeMethod(t, contract, "mintToWemix", big.NewInt(1))
 }
 
 //test to run onlyOwner modifier method under non-owner account.
-func TestOwner(t *testing.T) {
-	contract := depoly(t)
-
-	expecedFail := func(key *ecdsa.PrivateKey, method string, new interface{}) {
-		if r, err := contract.Execute(key, method, new); err != nil {
-			t.Fatal(err)
-		} else if r.Status == 0 {
-			t.Logf("ok > denied to execute %s. receipt.status : %d", method, r.Status)
-		} else {
-			t.Fatalf("failed > accepted to execute %s. receipt.status : %d", method, r.Status)
-		}
-	}
-	expecedSuccess := func(key *ecdsa.PrivateKey, method string, new interface{}) {
-		if r, err := contract.Execute(key, method, new); err != nil {
-			t.Fatal(err)
-		} else if r.Status == 1 {
-			t.Logf("ok > accepted to execute %s. receipt.status : %d", method, r.Status)
-		} else {
-			t.Fatalf("failed > denied execute %s. receipt.status : %d", method, r.Status)
-		}
-	}
+func TestWemixOwner(t *testing.T) {
+	contract := depolyWemix(t)
 
 	key, _ := crypto.GenerateKey()
 
-	expecedFail(key, "change_unitStaking", big.NewInt(1))
-	expecedFail(key, "change_minBlockWaitingWithdrawal", big.NewInt(1))
-	expecedFail(key, "change_maxTimesMintingOnce", big.NewInt(1))
-	expecedFail(key, "change_ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
-	expecedFail(key, "change_wemix", common.HexToAddress("0x0000000000000000000000000000000000000002"))
-	expecedFail(key, "change_mintToPartner", big.NewInt(1))
-	expecedFail(key, "change_mintToEcoFund", big.NewInt(1))
-	expecedFail(key, "change_mintToWemix", big.NewInt(1))
-	expecedFail(key, "transferOwnership", func() common.Address {
+	expecedFail(t, contract, key, "change_unitStaking", big.NewInt(1))
+	expecedFail(t, contract, key, "change_minBlockWaitingWithdrawal", big.NewInt(1))
+	expecedFail(t, contract, key, "change_maxTimesMintingOnce", big.NewInt(1))
+	expecedFail(t, contract, key, "change_ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
+	expecedFail(t, contract, key, "change_wemix", common.HexToAddress("0x0000000000000000000000000000000000000002"))
+	expecedFail(t, contract, key, "change_mintToPartner", big.NewInt(1))
+	expecedFail(t, contract, key, "change_mintToWemix", big.NewInt(1))
+	expecedFail(t, contract, key, "transferOwnership", func() common.Address {
 		k, _ := crypto.GenerateKey()
 		return crypto.PubkeyToAddress(k.PublicKey)
 	}())
 
 	newOwnerKey, _ := crypto.GenerateKey()
-	expecedSuccess(nil, "transferOwnership", crypto.PubkeyToAddress(newOwnerKey.PublicKey))
-	expecedSuccess(newOwnerKey, "transferOwnership", contract.Owner)
+	expecedSuccess(t, contract, nil, "transferOwnership", crypto.PubkeyToAddress(newOwnerKey.PublicKey))
+	expecedSuccess(t, contract, newOwnerKey, "transferOwnership", contract.Owner)
 }
 
 //Test to run addAllowedStaker method.
-func TestAllowedPartner(t *testing.T) {
-	contract := depoly(t)
+func TestWemixAllowedPartner(t *testing.T) {
+	contract := depolyWemix(t)
 
 	//make an error occur
 	if r, err := contract.Execute(nil, "stake", new(big.Int)); err != nil {
@@ -271,8 +189,8 @@ func TestAllowedPartner(t *testing.T) {
 }
 
 //test staking
-func TestStake(t *testing.T) {
-	contract := depoly(t)
+func TestWemixStake(t *testing.T) {
+	contract := depolyWemix(t)
 
 	testStake(t, contract, true)
 }
@@ -415,8 +333,8 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 }
 
 //test to withdraw
-func TestWithdraw(t *testing.T) {
-	contract := depoly(t)
+func TestWemixWithdraw(t *testing.T) {
+	contract := depolyWemix(t)
 
 	//withdrawalWaitingMinBlockd을 짧게 바꿈.
 	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(1000)); err != nil {
@@ -437,7 +355,7 @@ func TestWithdraw(t *testing.T) {
 
 	totalStakeBalance := new(big.Int)
 	for i := 0; i < len(stakes); i++ {
-		totalStakeBalance = new(big.Int).Add(totalStakeBalance, stakes[i].BalanceStaking)
+		totalStakeBalance.Add(totalStakeBalance, stakes[i].BalanceStaking)
 	}
 
 	if totalStakeBalance.Cmp(contractBalance) != 0 {
@@ -611,9 +529,9 @@ func testMint(t *testing.T, contract *backend.Contract) {
 			totalMinted.Add(totalMinted, mintToPartner)
 			indexNext++
 		}
-		balanceWemix = new(big.Int).Add(balanceWemix, mintToWemix)
+		balanceWemix.Add(balanceWemix, mintToWemix)
 		totalMinted.Add(totalMinted, mintToWemix)
-		balanceEcoFund = new(big.Int).Add(balanceEcoFund, mintToEcoFund)
+		balanceEcoFund.Add(balanceEcoFund, mintToEcoFund)
 		totalMinted.Add(totalMinted, mintToEcoFund)
 	}
 
@@ -649,16 +567,16 @@ func testMint(t *testing.T, contract *backend.Contract) {
 }
 
 //After registering block partners, do minting test and check the amount of minting.
-func TestMint(t *testing.T) {
-	contract := depoly(t)
+func TestWemixMint(t *testing.T) {
+	contract := depolyWemix(t)
 	testStake(t, contract, false)
 
 	testMint(t, contract)
 }
 
 //Test minting without block partner and check minting amount.
-func TestMintWithoutPartner(t *testing.T) {
-	contract := depoly(t)
+func TestWemixMintWithoutPartner(t *testing.T) {
+	contract := depolyWemix(t)
 
 	testMint(t, contract)
 }
