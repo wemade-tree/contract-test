@@ -36,7 +36,7 @@ func checkVariable(t *testing.T, contract *backend.Contract, method string, expe
 	if ret, err := contract.LowCall(method); err != nil {
 		t.Fatal(err)
 	} else if bytes.Equal(toBytes(t, ret[0]), toBytes(t, expected)) == false {
-		t.Fatalf("failed > dismatch %s : expected %v , got %v", method, expected, ret[0])
+		t.Fatalf("failed > mismatch %s : expected %v , got %v", method, expected, ret[0])
 	} else {
 		switch expected.(type) {
 		case common.Address:

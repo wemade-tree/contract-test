@@ -178,10 +178,10 @@ func TestWemixAllowedPartner(t *testing.T) {
 			}
 		}
 		if common.BytesToAddress(topics[1].Bytes()) != partner {
-			t.Fatal("failed > dismatch partner after stake")
+			t.Fatal("failed > mismatch partner after stake")
 		}
 		if common.BytesToAddress(topics[2].Bytes()) != contract.Owner {
-			t.Fatal("failed > dismatch payer after stake")
+			t.Fatal("failed > mismatch payer after stake")
 		}
 	}
 
@@ -279,10 +279,10 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 			result := _stake(false, partner, partnerKey, waitBlock)
 
 			if result.Payer != result.Partner {
-				t.Fatalf("failed > dismatch partner:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
+				t.Fatalf("failed > mismatch payer:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
 			}
 			if partner != result.Payer {
-				t.Fatalf("failed > dismatch tx sender:%v and partner:%v", partner.Hex(), result.Payer.Hex())
+				t.Fatalf("failed > mismatch partner:%v and payer:%v", partner.Hex(), result.Payer.Hex())
 			}
 
 			//받은 토큰을 모두 staking했으면 종료
@@ -307,10 +307,10 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 			result := _stake(true, partner, contract.OwnerKey, waitBlock)
 
 			if result.Payer == result.Partner {
-				t.Fatalf("failed > equal Payer:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
+				t.Fatalf("failed > equal payer:%v, partner:%v", result.Payer.Hex(), result.Partner.Hex())
 			}
 			if contract.Owner != result.Payer {
-				t.Fatalf("failed > dismatch tx sender:%v and payer:%v", contract.Owner.Hex(), result.Payer.Hex())
+				t.Fatalf("failed > mismatch sender:%v, payer:%v", contract.Owner.Hex(), result.Payer.Hex())
 			}
 
 			amount = new(big.Int).Sub(amount, result.BalanceStaking)
@@ -326,7 +326,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 		t.Fatal(err)
 	}
 	if partnersNumber.Cmp(new(big.Int).SetInt64(countExecuteStake)) != 0 {
-		t.Fatalf("failed > dismatch partner number, expected:%v, got:%v", countExecuteStake, partnersNumber)
+		t.Fatalf("failed > mismatch partnersNumber, expected:%v, got:%v", countExecuteStake, partnersNumber)
 	}
 
 	return partnerKeyMap
@@ -359,7 +359,7 @@ func TestWemixWithdraw(t *testing.T) {
 	}
 
 	if totalStakeBalance.Cmp(contractBalance) != 0 {
-		t.Fatalf("failed > dismatch balance of token contract between total stake balance, contract:%v, total:%v", contractBalance, totalStakeBalance)
+		t.Fatalf("failed > mismatch balance of token contract between total stake balance, contract:%v, total:%v", contractBalance, totalStakeBalance)
 	} else {
 		t.Logf("ok > contract's balance: %v, total stake balance:%v", contractBalance, totalStakeBalance)
 	}
@@ -541,7 +541,7 @@ func testMint(t *testing.T, contract *backend.Contract) {
 			t.Fatal(err)
 		}
 		if expected.Cmp(got) != 0 {
-			t.Fatalf("failed > dismatch %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
+			t.Fatalf("failed > mismatch %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
 		} else {
 			t.Logf("ok > %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
 		}
@@ -559,7 +559,7 @@ func testMint(t *testing.T, contract *backend.Contract) {
 	} else {
 		expected := new(big.Int).Add(initialTotalSupply, totalMinted)
 		if totalSupply.Cmp(expected) != 0 {
-			t.Fatalf("failed > dismatch totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
+			t.Fatalf("failed > mismatch totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
 		} else {
 			t.Logf("ok > match totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
 		}

@@ -168,9 +168,8 @@ func (p *Contract) Execute(key *ecdsa.PrivateKey, method string, args ...interfa
 		return nil, err
 	}
 
-	tx := types.NewTransaction(nonce, p.Address, new(big.Int), uint64(10000000), big.NewInt(0), data)
-	tx, _ = types.SignTx(tx, types.HomesteadSigner{}, key)
-
+	tx, err := types.SignTx(types.NewTransaction(nonce, p.Address, new(big.Int), uint64(10000000), big.NewInt(0), data),
+		types.HomesteadSigner{}, key)
 	if err != nil {
 		return nil, err
 	}
