@@ -661,7 +661,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
 
     uint256 public mintToPartner = 0.5 ether; //balance be minted to block-partner per block
     uint256 public mintToEcoFund = 0.25 ether; //balance be minted to eco-fund per block
-    uint256 public mintToWemix = 0.25 ether; //balance be minted to wenix per block
+    uint256 public mintToWemix = 0.25 ether; //balance be minted to wemix per block
 
     uint256 public blockToMint = 0; //the next mintable block
 
