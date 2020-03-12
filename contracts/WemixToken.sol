@@ -724,7 +724,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
         require(_subIndex < allPartners.length, "WemixToken: _subIndex equal or higher than allPartners.length");
 
         Partner memory _p = allPartners[_subIndex];
-        require(_p.serial == _serial, "WemixToken: _p.serial is different with _serialh");
+        require(_p.serial == _serial, "WemixToken: _p.serial is different with _serial");
   
         //only payer can withdraw
         require(_p.payer == _msgSender(), "WemixToken: _p.payer is different with _msgSender()");  
@@ -749,7 +749,7 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
 
     //mint tokens every block.
     function mint() public {   
-        require(blockToMint < block.number, "WemixToken: _p.blockToMint is equal or higher than  than block.number"); 
+        require(blockToMint < block.number, "WemixToken: _p.blockToMint is equal or higher than than block.number"); 
         uint _count = 0;
 
         //mintable up to maxTimesMintingOnce

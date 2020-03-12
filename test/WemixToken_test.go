@@ -266,7 +266,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 	for i := 0; i < 3; i++ {
 		partner, partnerKey := makePartner()
 
-		//wemix 지급
+		//send wemix for testing,
 		amount := new(big.Int).Mul(unitStaking, new(big.Int).SetInt64(int64(i+1)))
 		if r, err := contract.Execute(nil, "transfer", partner, amount); err != nil {
 			t.Fatal(err)
@@ -285,7 +285,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 				t.Fatalf("failed > mismatch partner:%v and payer:%v", partner.Hex(), result.Payer.Hex())
 			}
 
-			//받은 토큰을 모두 staking했으면 종료
+			//when all tokens received have been exhausted, terminate staking.
 			balance := (*big.Int)(nil)
 			if err := contract.Call(&balance, "balanceOf", partner); err != nil {
 				t.Fatal(err)
@@ -336,7 +336,7 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 func TestWemixWithdraw(t *testing.T) {
 	contract := depolyWemix(t)
 
-	//withdrawalWaitingMinBlockd을 짧게 바꿈.
+	//change withdrawalWaitingMinBlockd short for testing.
 	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(1000)); err != nil {
 		t.Fatal(err)
 	} else if r.Status != 1 {
