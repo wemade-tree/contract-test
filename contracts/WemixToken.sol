@@ -667,7 +667,6 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
 
     event Staked(address indexed partner, address indexed payer, uint256 indexed serial);
     event Withdrawal(address indexed partner, address indexed payer, uint256 indexed serial);
-    event Minted(uint256 indexed block, address indexed partner, uint256 indexed serial);   
 
     constructor(address _ecoFund, address _wemix) 
     ERC20Detailed("WEMIX TOKEN", "WEMIX", 18) public {
@@ -763,8 +762,6 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
                 Partner memory _p = allPartners[nextPartnerToMint];
 
                 super._mint(_p.partner, mintToPartner);
-
-                emit Minted(blockToMint, _p.partner, _p.serial);                    
                 nextPartnerToMint++;
             }
             super._mint(wemix, mintToWemix);
