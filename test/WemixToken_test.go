@@ -1,14 +1,10 @@
 package test
 
 import (
-	"bytes"
-	"compress/gzip"
 	"crypto/ecdsa"
-	"encoding/json"
 	"math/big"
 	"testing"
 
-	"github.com/klaytn/klaytn/common/hexutil"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -93,32 +89,32 @@ type ContractInfo struct {
 func TestWemixDeploy(t *testing.T) {
 	contract := depolyWemix(t)
 
-	jsonContract := &Contract{
-		Code:  hexutil.Encode(contract.Code),
-		RCode: hexutil.Encode(contract.Code),
-		Info: ContractInfo{
-			Source:          contract.Info.Source,
-			Language:        contract.Info.Language,
-			LanguageVersion: contract.Info.LanguageVersion,
-			CompilerVersion: contract.Info.CompilerVersion,
-			CompilerOptions: contract.Info.CompilerOptions,
-			AbiDefinition:   contract.Info.AbiDefinition,
-			UserDoc:         contract.Info.UserDoc,
-			DeveloperDoc:    contract.Info.DeveloperDoc,
-			Metadata:        contract.Info.Metadata,
-		},
-	}
+	// jsonContract := &Contract{
+	// 	Code:  hexutil.Encode(contract.Code),
+	// 	RCode: hexutil.Encode(contract.Code),
+	// 	Info: ContractInfo{
+	// 		Source:          contract.Info.Source,
+	// 		Language:        contract.Info.Language,
+	// 		LanguageVersion: contract.Info.LanguageVersion,
+	// 		CompilerVersion: contract.Info.CompilerVersion,
+	// 		CompilerOptions: contract.Info.CompilerOptions,
+	// 		AbiDefinition:   contract.Info.AbiDefinition,
+	// 		UserDoc:         contract.Info.UserDoc,
+	// 		DeveloperDoc:    contract.Info.DeveloperDoc,
+	// 		Metadata:        contract.Info.Metadata,
+	// 	},
+	// }
 
-	b, err := json.Marshal(jsonContract)
-	assert.NoError(t, err)
+	// b, err := json.Marshal(jsonContract)
+	// assert.NoError(t, err)
 
-	var buff bytes.Buffer
-	gz := gzip.NewWriter(&buff)
-	_, err = gz.Write(b)
-	assert.NoError(t, err)
+	// var buff bytes.Buffer
+	// gz := gzip.NewWriter(&buff)
+	// _, err = gz.Write(b)
+	// assert.NoError(t, err)
 
-	assert.NoError(t, gz.Close())
-	t.Log(hexutil.Encode(b))
+	// assert.NoError(t, gz.Close())
+	// t.Log(hexutil.Encode(b))
 
 	// wemix := (*backend.Contract)(nil)
 	// if err := json.Unmarshal(b, &wemix); err != nil {
