@@ -1,4 +1,4 @@
-pragma solidity 0.6.3;
+pragma solidity >= 0.6.0 <0.7.0;
 
 
 /**
@@ -636,44 +636,45 @@ contract Ownable is Context {
  */
 
 contract WemixToken is ERC20, ERC20Detailed, Ownable{
-    uint256 public      unitStaking = 5000000 ether;  //Unit of single staking
-    uint256 public      minBlockWaitingWithdrawal = 7776000;//Minimum number of blocks to wait for withdrawal after staking
-                                                             //about 90 days (Assumes 1 block per second)
-    uint256 public      maxTimesMintingOnce = 50;   //Maximum number of minting that can be executed when the mint() method is executed
-    
-    address public      ecoFund; // Wemix Ecosystem fund address to receive a minted token
-    address public      wemix;   // Use for continuous development and maintenance of WEMIX
+    uint256 public      unitStaking = 2000000 ether;            //Unit of single staking 
+    uint256 public      minBlockWaitingWithdrawal = 7776000;    //Minimum number of blocks to wait for withdrawal after staking
+                                                                //about 90 days (Assumes 1 block per second)
+    address public      ecoFund;                                // Wemix Ecosystem fund address to receive a minted token
+    address public      wemix;                                  // Use for continuous development and maintenance of WEMIX
   
     struct Partner {
-        uint256     serial; //unique number of registered partner
-        address     partner;    //address to receive a minted token
-        address     payer;      //address paid token when staking
-        uint256     blockStaking; //block number when staking
+        uint256     serial;                 //unique number of registered partner
+        address     partner;                //address to receive a minted token
+        address     payer;                  //address paid token when staking
+        uint256     blockStaking;           //block number when staking
         uint256     blockWaitingWithdrawal; // blocks to wait for withdrawal
-        uint256     balanceStaking; // tokens deposited when staking
-    }    
+        uint256     balanceStaking;         // tokens deposited when staking
+    }
     Partner[] public  allPartners;    
-    mapping(uint256 => uint256) private allPartnersIndex;    //Partner.serial => index of allPartners  
-    uint256 private _nextSerial = 1; //serial number to be given to next partner
-    mapping (address => bool) public allowedPartners; //address of partner allowed to staking
+    mapping(uint256 => uint256) private allPartnersIndex;       //Partner.serial => index of allPartners  
+    uint256 private _nextSerial = 1;                            //serial number to be given to next partner
+    mapping (address => bool) public allowedPartners;           //address of partner allowed to staking
 
-    uint256 public nextPartnerToMint;  //index of allPartners to receive minted token in next block
+    uint256 public nextPartnerToMint;                           //index of allPartners to receive minted token in next block
 
-    uint256 public mintToPartner = 0.5 ether; //balance be minted to block-partner per block
-    uint256 public mintToEcoFund = 0.25 ether; //balance be minted to eco-fund per block
-    uint256 public mintToWemix = 0.25 ether; //balance be minted to wemix per block
+    uint256 public blockUnitForMint = 60;                       //block unit for minting
+    uint256 public mintToPartner = 0.5 ether;                   //balance be minted to block-partner per block
+    uint256 public mintToEcoFund = 0.25 ether;                  //balance be minted to eco-fund per block
+    uint256 public mintToWemix = 0.25 ether;                    //balance be minted to wenix per block
 
-    uint256 public blockToMint = 0; //the next mintable block
+    uint256 public blockToMint = 0;                             //the next mintable block
+    uint256 private nextBlockUnitForMint;                       //if it is changed to greater than 0, then mint() is executed, blockToMint is updated to it and it is initialized to 0.
 
     event Staked(address indexed partner, address indexed payer, uint256 indexed serial);
     event Withdrawal(address indexed partner, address indexed payer, uint256 indexed serial);
+    event Minted(uint256 indexed block, address indexed partner, uint256 indexed serial);   
 
     constructor(address _ecoFund, address _wemix) 
     ERC20Detailed("WEMIX TOKEN", "WEMIX", 18) public {
         super._mint(_msgSender(), 1000000000*10**18);
         ecoFund = _ecoFund;
         wemix = _wemix;
-        blockToMint = block.number;
+        blockToMint = block.number.add(blockUnitForMint); 
     }
 
     //Method to register msg.sender as partner
@@ -720,16 +721,15 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     //withdraw the staking token.
     function withdraw(uint256 _serial) public {   
         uint256 _subIndex = allPartnersIndex[_serial];
-        require(_subIndex < allPartners.length, "WemixToken: _subIndex is equal or higher than allPartners.length");
+        require(_subIndex < allPartners.length, "WemixToken: _subIndex equal or higher than allPartners.length");
 
         Partner memory _p = allPartners[_subIndex];
-        require(_p.serial == _serial, "WemixToken: _p.serial is different with _serial");
+        require(_p.serial == _serial, "WemixToken: _p.serial is different with _serialh");
   
         //only payer can withdraw
-        require(_p.payer == _msgSender(), "WemixToken: _p.payer is different with _msgSender()");  
+        require(_p.payer == _msgSender(), "WemixToken: _p.payer is different with _msgSender()");
         //check if the withdrawal wait block has passed,
-        require(_p.blockStaking + _p.blockWaitingWithdrawal <= block.number, "WemixToken: _p.blockStaking + _p.blockWaitingWithdrawal is higher than block.number");  
-
+        require(_p.blockStaking + _p.blockWaitingWithdrawal <= block.number, "WemixToken: _p.blockStaking + _p.blockWaitingWithdrawal is higher than block.number");
         //send staking token to the payer,
         super._transfer(address(this), _p.payer, _p.balanceStaking);
 
@@ -739,35 +739,32 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
         uint256 _lastIndex = allPartners.length.sub(1);
         if(_subIndex != _lastIndex) {
             Partner memory _lastP = allPartners[_lastIndex];
-            allPartners[_subIndex] = _lastP; 
-            allPartnersIndex[_lastP.serial] = _subIndex; 
+            allPartners[_subIndex] = _lastP;
+            allPartnersIndex[_lastP.serial] = _subIndex;
         }
         allPartners.pop();
-        allPartnersIndex[_serial] = 0;        
+        allPartnersIndex[_serial] = 0;
     }
 
     //mint tokens every block.
-    function mint() public {   
-        require(blockToMint < block.number, "WemixToken: _p.blockToMint is equal or higher than block.number"); 
-        uint _count = 0;
+    function mint() public {
+        require(isMintable(), "WemixToken: blockToMint is higher than block.number");
 
-        //mintable up to maxTimesMintingOnce
-        while(blockToMint < block.number && _count < maxTimesMintingOnce){            
-            blockToMint = blockToMint.add(1);
-            if (allPartners.length > 0) {
-                if(nextPartnerToMint >= allPartners.length){
-                    nextPartnerToMint = 0;
-                }
-
-                Partner memory _p = allPartners[nextPartnerToMint];
-
-                super._mint(_p.partner, mintToPartner);
-                nextPartnerToMint++;
+        if (allPartners.length > 0) {
+            if(nextPartnerToMint >= allPartners.length){
+                nextPartnerToMint = 0;
             }
-            super._mint(wemix, mintToWemix);
-            super._mint(ecoFund, mintToEcoFund);
-            _count++;
+            super._mint(allPartners[nextPartnerToMint].partner, mintToPartner.mul(blockUnitForMint));
+            super._mint(wemix, mintToWemix.mul(blockUnitForMint));
+            super._mint(ecoFund, mintToEcoFund.mul(blockUnitForMint));
+            nextPartnerToMint = nextPartnerToMint.add(1);
         }
+
+        if(nextBlockUnitForMint > 0) {
+            blockUnitForMint = nextBlockUnitForMint;
+            nextBlockUnitForMint = 0;
+        }
+        blockToMint = blockToMint.add(blockUnitForMint);
     } 
 
     function addAllowedPartner(address _account) public onlyOwner {
@@ -800,9 +797,8 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
         balanceStaking = _p.balanceStaking;
     } 
     
-    //mintings not yet done
-    function pendingBlock() public view returns(uint) {
-        return block.number-blockToMint;
+    function isMintable() public view returns(bool) {
+        return (block.number >= blockToMint);
     }
 
     function change_ecoFund(address _account) public  onlyOwner{
@@ -817,10 +813,6 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
 
     function change_minBlockWaitingWithdrawal(uint256 _block) public  onlyOwner{
         minBlockWaitingWithdrawal = _block;
-    } 
-
-    function change_maxTimesMintingOnce(uint256 _times) public  onlyOwner{
-        maxTimesMintingOnce = _times;
     } 
 
     function change_unitStaking(uint256 _unit) public  onlyOwner{
@@ -838,13 +830,8 @@ contract WemixToken is ERC20, ERC20Detailed, Ownable{
     function change_mintToEcoFund(uint256 _value) public onlyOwner {
         mintToEcoFund = _value;
     }
-    
+
+    function change_blockUnitForMint(uint256 _block) public onlyOwner {
+        nextBlockUnitForMint = _block;
+    }
 }
-
-
-
-
-
-
-
-

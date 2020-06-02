@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/wemade-tree/contract-test/backend"
 )
@@ -16,35 +18,30 @@ type typeKeyMap map[common.Address]*ecdsa.PrivateKey
 //Converts the given data into a byte slice and returns it.
 func toBytes(t *testing.T, data interface{}) []byte {
 	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(data); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, gob.NewEncoder(&buf).Encode(data))
 	return buf.Bytes()
 }
 
 //Converts the given number string based decimal number into big.Int type and returns it.
 func toBig(t *testing.T, value10 string) *big.Int {
 	ret, b := new(big.Int).SetString(value10, 10)
-	if b == false {
-		t.Fatal("failed > set string to *big.Int")
-	}
+	assert.True(t, b)
 	return ret
 }
 
 //checkVariable compares value stored in the blockchain with a given expected value
 func checkVariable(t *testing.T, contract *backend.Contract, method string, expected interface{}) {
-	if ret, err := contract.LowCall(method); err != nil {
-		t.Fatal(err)
-	} else if bytes.Equal(toBytes(t, ret[0]), toBytes(t, expected)) == false {
-		t.Fatalf("failed > mismatch %s : expected %v , got %v", method, expected, ret[0])
-	} else {
-		switch expected.(type) {
-		case common.Address:
-			t.Log(method, ret[0].(common.Address).Hex())
-		default:
-			t.Log(method, ret[0])
-		}
+	ret, err := contract.LowCall(method)
+	assert.NoError(t, err)
+	assert.Equal(t, toBytes(t, ret[0]), toBytes(t, expected))
+
+	switch expected.(type) {
+	case common.Address:
+		t.Log(method, ret[0].(common.Address).Hex())
+	default:
+		t.Log(method, ret[0])
 	}
+
 }
 
 //executeChangeMethod executes the method with the "change_" prefix in the contract,
@@ -53,40 +50,25 @@ func checkVariable(t *testing.T, contract *backend.Contract, method string, expe
 func executeChangeMethod(t *testing.T, contract *backend.Contract, methodExceptCall string, arg interface{}) {
 	changeMethod := "change_" + methodExceptCall
 
-	if r, err := contract.Execute(nil, changeMethod, arg); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > execute %s. receipt.status : %d", changeMethod, r.Status)
-	} else if changed, err := contract.LowCall(methodExceptCall); err != nil {
-		t.Fatal(err)
-	} else if bytes.Equal(toBytes(t, changed[0]), toBytes(t, arg)) == false {
-		switch arg.(type) {
-		case common.Address:
-			t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, arg.(common.Address).Hex(), changed[0].(common.Address).Hex())
-		default:
-			t.Fatalf("failed > %s : expected %v , got %v", methodExceptCall, arg, changed[0])
-		}
-	}
+	r, err := contract.Execute(nil, changeMethod, arg)
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 1)
+
+	changed, err := contract.LowCall(methodExceptCall)
+	assert.NoError(t, err)
+	assert.Equal(t, toBytes(t, changed[0]), toBytes(t, arg))
 }
 
 //causes contract execution to fail.
 func expecedFail(t *testing.T, contract *backend.Contract, key *ecdsa.PrivateKey, method string, arg ...interface{}) {
-	if r, err := contract.Execute(key, method, arg...); err != nil {
-		t.Fatal(err)
-	} else if r.Status == 0 {
-		t.Logf("ok > denied to execute %s. receipt.status : %d", method, r.Status)
-	} else {
-		t.Fatalf("failed > accepted to execute %s. receipt.status : %d", method, r.Status)
-	}
+	r, err := contract.Execute(key, method, arg...)
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 0)
 }
 
 //checks if the contract execution is successful..
 func expecedSuccess(t *testing.T, contract *backend.Contract, key *ecdsa.PrivateKey, method string, arg ...interface{}) {
-	if r, err := contract.Execute(key, method, arg...); err != nil {
-		t.Fatal(err)
-	} else if r.Status == 1 {
-		t.Logf("ok > accepted to execute %s. receipt.status : %d", method, r.Status)
-	} else {
-		t.Fatalf("failed > denied execute %s. receipt.status : %d", method, r.Status)
-	}
+	r, err := contract.Execute(key, method, arg...)
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 1)
 }

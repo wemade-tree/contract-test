@@ -1,9 +1,15 @@
 package test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/ecdsa"
+	"encoding/json"
 	"math/big"
 	"testing"
+
+	"github.com/klaytn/klaytn/common/hexutil"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -36,16 +42,11 @@ func (p *typePartner) log(serial *big.Int, t *testing.T) {
 //Retrieve and store all block partner information from the blockchain,
 func (p *typePartnerSlice) loadAllStake(t *testing.T, contract *backend.Contract) {
 	partnersNumber := (*big.Int)(nil)
-	if err := contract.Call(&partnersNumber, "partnersNumber"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&partnersNumber, "partnersNumber"))
 
 	for i := int64(0); i < partnersNumber.Int64(); i++ {
 		s := typePartner{}
-
-		if err := contract.Call(&s, "partnerByIndex", new(big.Int).SetInt64(i)); err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, contract.Call(&s, "partnerByIndex", new(big.Int).SetInt64(i)))
 		*p = append(*p, &s)
 	}
 	t.Logf("ok > loadAllStake, partners number: %d", partnersNumber)
@@ -54,9 +55,7 @@ func (p *typePartnerSlice) loadAllStake(t *testing.T, contract *backend.Contract
 //After compiling and distributing the contract, return the Contract pointer object.
 func depolyWemix(t *testing.T) *backend.Contract {
 	contract, err := backend.NewContract("../contracts/WemixToken.sol", "WemixToken")
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	ecoFundKey, _ := crypto.GenerateKey()
 	wemixKey, _ := crypto.GenerateKey()
@@ -67,14 +66,65 @@ func depolyWemix(t *testing.T) *backend.Contract {
 		crypto.PubkeyToAddress(wemixKey.PublicKey),   //wemix address
 	}
 	if err := contract.Deploy(args...); err != nil {
-		t.Fatal(err)
+		assert.NoError(t, err)
 	}
 	return contract
+}
+
+type Contract struct {
+	Code  string       `json:"code"`
+	RCode string       `json:"runtime-code"`
+	Info  ContractInfo `json:"info"`
+}
+
+type ContractInfo struct {
+	Source          string      `json:"source"`
+	Language        string      `json:"language"`
+	LanguageVersion string      `json:"languageVersion"`
+	CompilerVersion string      `json:"compilerVersion"`
+	CompilerOptions string      `json:"compilerOptions"`
+	AbiDefinition   interface{} `json:"abiDefinition"`
+	UserDoc         interface{} `json:"userDoc"`
+	DeveloperDoc    interface{} `json:"developerDoc"`
+	Metadata        string      `json:"metadata"`
 }
 
 //Test to compile and deploy the contract
 func TestWemixDeploy(t *testing.T) {
 	contract := depolyWemix(t)
+
+	jsonContract := &Contract{
+		Code:  hexutil.Encode(contract.Code),
+		RCode: hexutil.Encode(contract.Code),
+		Info: ContractInfo{
+			Source:          contract.Info.Source,
+			Language:        contract.Info.Language,
+			LanguageVersion: contract.Info.LanguageVersion,
+			CompilerVersion: contract.Info.CompilerVersion,
+			CompilerOptions: contract.Info.CompilerOptions,
+			AbiDefinition:   contract.Info.AbiDefinition,
+			UserDoc:         contract.Info.UserDoc,
+			DeveloperDoc:    contract.Info.DeveloperDoc,
+			Metadata:        contract.Info.Metadata,
+		},
+	}
+
+	b, err := json.Marshal(jsonContract)
+	assert.NoError(t, err)
+
+	var buff bytes.Buffer
+	gz := gzip.NewWriter(&buff)
+	_, err = gz.Write(b)
+	assert.NoError(t, err)
+
+	assert.NoError(t, gz.Close())
+	t.Log(hexutil.Encode(b))
+
+	// wemix := (*backend.Contract)(nil)
+	// if err := json.Unmarshal(b, &wemix); err != nil {
+	// 	assert.NoError(t, err)
+	// }
+	// contract = wemix
 
 	t.Log("contract source file:", contract.File)
 	t.Log("contract name:", contract.Name)
@@ -84,27 +134,33 @@ func TestWemixDeploy(t *testing.T) {
 	t.Log("contract bytecode size:", len(contract.Code))
 
 	t.Log("ok > contract address deployed", contract.Address.Hex())
+
+	// t.Log("contract bytecode:", hexutil.Encode(contract.Code))
+	// abiBytes, _ := json.Marshal(contract.Info.AbiDefinition)
+	// t.Log("contract abi:", string(abiBytes))
+
 }
 
 //Test to verify the variables of the deployed contract.
 //Fatal if the expected value and the actual contract value differ.
 func TestWemixVariable(t *testing.T) {
 	contract := depolyWemix(t)
+	block := contract.Backend.Blockchain().CurrentBlock().Header().Number
 
 	checkVariable(t, contract, "name", "WEMIX TOKEN")
 	checkVariable(t, contract, "symbol", "WEMIX")
 	checkVariable(t, contract, "decimals", uint8(18))
 	checkVariable(t, contract, "totalSupply", toBig(t, "1000000000000000000000000000"))
-	checkVariable(t, contract, "unitStaking", toBig(t, "5000000000000000000000000"))
+	checkVariable(t, contract, "unitStaking", toBig(t, "2000000000000000000000000"))
 	checkVariable(t, contract, "minBlockWaitingWithdrawal", new(big.Int).SetUint64(7776000))
-	checkVariable(t, contract, "maxTimesMintingOnce", new(big.Int).SetUint64(50))
+	checkVariable(t, contract, "blockUnitForMint", new(big.Int).SetUint64(60))
 	checkVariable(t, contract, "ecoFund", contract.ConstructorInputs[0].(common.Address))
 	checkVariable(t, contract, "wemix", contract.ConstructorInputs[1].(common.Address))
 	checkVariable(t, contract, "nextPartnerToMint", new(big.Int))
 	checkVariable(t, contract, "mintToPartner", new(big.Int).SetUint64(500000000000000000))
 	checkVariable(t, contract, "mintToEcoFund", new(big.Int).SetUint64(250000000000000000))
 	checkVariable(t, contract, "mintToWemix", new(big.Int).SetUint64(250000000000000000))
-	checkVariable(t, contract, "blockToMint", contract.BlockDeployed)
+	checkVariable(t, contract, "blockToMint", new(big.Int).Add(block, new(big.Int).SetUint64(60)))
 }
 
 //Test to execute onlyOwner modifier method.
@@ -113,7 +169,6 @@ func TestWemixExecute(t *testing.T) {
 
 	executeChangeMethod(t, contract, "unitStaking", big.NewInt(1))
 	executeChangeMethod(t, contract, "minBlockWaitingWithdrawal", big.NewInt(1))
-	executeChangeMethod(t, contract, "maxTimesMintingOnce", big.NewInt(1))
 	executeChangeMethod(t, contract, "ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
 	executeChangeMethod(t, contract, "wemix", common.HexToAddress("0x0000000000000000000000000000000000000001"))
 	executeChangeMethod(t, contract, "mintToPartner", big.NewInt(1))
@@ -129,7 +184,6 @@ func TestWemixOwner(t *testing.T) {
 
 	expecedFail(t, contract, key, "change_unitStaking", big.NewInt(1))
 	expecedFail(t, contract, key, "change_minBlockWaitingWithdrawal", big.NewInt(1))
-	expecedFail(t, contract, key, "change_maxTimesMintingOnce", big.NewInt(1))
 	expecedFail(t, contract, key, "change_ecoFund", common.HexToAddress("0x0000000000000000000000000000000000000001"))
 	expecedFail(t, contract, key, "change_wemix", common.HexToAddress("0x0000000000000000000000000000000000000002"))
 	expecedFail(t, contract, key, "change_mintToPartner", big.NewInt(1))
@@ -149,41 +203,30 @@ func TestWemixAllowedPartner(t *testing.T) {
 	contract := depolyWemix(t)
 
 	//make an error occur
-	if r, err := contract.Execute(nil, "stake", new(big.Int)); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 0 {
-		t.Fatalf("failed > addAllowedStaker needed before stake but accepted. receipt.Status : %d", r.Status)
-	}
+	r, err := contract.Execute(nil, "stake", new(big.Int))
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 0)
 
 	//make partner
 	partnerKey, _ := crypto.GenerateKey()
 	partner := crypto.PubkeyToAddress(partnerKey.PublicKey)
 
 	//addAllowedPartner
-	if r, err := contract.Execute(nil, "addAllowedPartner", partner); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > addAllowedPartner : %s, receipt.Status : %d ", contract.Address.Hex(), r.Status)
-	}
+	r, err = contract.Execute(nil, "addAllowedPartner", partner)
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 1)
 
 	topics := []common.Hash{}
-	if r, err := contract.Execute(nil, "stakeDelegated", partner, new(big.Int)); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > not accepted but execute addAllowedStake before")
-	} else {
-		for _, g := range r.Logs {
-			if g.Topics[0] == contract.Abi.Events["Staked"].Id() {
-				topics = append(topics, g.Topics...)
-			}
-		}
-		if common.BytesToAddress(topics[1].Bytes()) != partner {
-			t.Fatal("failed > mismatch partner after stake")
-		}
-		if common.BytesToAddress(topics[2].Bytes()) != contract.Owner {
-			t.Fatal("failed > mismatch payer after stake")
+	r, err = contract.Execute(nil, "stakeDelegated", partner, new(big.Int))
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 1)
+	for _, g := range r.Logs {
+		if g.Topics[0] == contract.Abi.Events["Staked"].Id() {
+			topics = append(topics, g.Topics...)
 		}
 	}
+	assert.Equal(t, common.BytesToAddress(topics[1].Bytes()), partner)
+	assert.Equal(t, common.BytesToAddress(topics[2].Bytes()), contract.Owner)
 
 	t.Log("ok > test addAllowedPartner")
 }
@@ -192,64 +235,50 @@ func TestWemixAllowedPartner(t *testing.T) {
 func TestWemixStake(t *testing.T) {
 	contract := depolyWemix(t)
 
-	testStake(t, contract, true)
+	testStake(t, contract, false)
 }
 
 func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typeKeyMap {
 	unitStaking := func() *big.Int {
 		ret := (*big.Int)(nil)
-		if err := contract.Call(&ret, "unitStaking"); err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, contract.Call(&ret, "unitStaking"))
 		return ret
 	}()
 
 	minBlockWaitingWithdrawal := (*big.Int)(nil)
-	if err := contract.Call(&minBlockWaitingWithdrawal, "minBlockWaitingWithdrawal"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&minBlockWaitingWithdrawal, "minBlockWaitingWithdrawal"))
 
 	countExecuteStake := int64(0)
 	partnerKeyMap := typeKeyMap{}
 
 	_stake := func(delegation bool, partner common.Address, payerKey *ecdsa.PrivateKey, waitBlock *big.Int) *typePartner {
-		//addAllowedPartner
-		if r, err := contract.Execute(nil, "addAllowedPartner", partner); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > addAllowedPartner : %s, receipt.Status : %d", partner.Hex(), r.Status)
-		}
-
-		//stakeDelegated
-		serial := new(big.Int)
 		var r *types.Receipt
 		var err error
+		//addAllowedPartner
+		r, err = contract.Execute(nil, "addAllowedPartner", partner)
+		assert.NoError(t, err)
+		assert.True(t, r.Status == 1)
+
 		if delegation == true {
 			r, err = contract.Execute(payerKey, "stakeDelegated", partner, waitBlock)
 		} else {
 			r, err = contract.Execute(payerKey, "stake", waitBlock)
 		}
+		assert.NoError(t, err)
+		assert.True(t, r.Status == 1)
 
-		if err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > stake : %s, receipt.Status : %d", partner.Hex(), r.Status)
-		} else {
-			for _, g := range r.Logs {
-				if g.Topics[0] == contract.Abi.Events["Staked"].Id() {
-					serial = g.Topics[3].Big()
-				}
+		serial := (*big.Int)(nil)
+		for _, g := range r.Logs {
+			if g.Topics[0] == contract.Abi.Events["Staked"].Id() {
+				serial = g.Topics[3].Big()
 			}
-			if serial == nil {
-				t.Fatal("failed > find stake index")
-			}
-			countExecuteStake++
 		}
+		assert.NotNil(t, serial)
+		countExecuteStake++
 
 		result := typePartner{}
-		if err := contract.Call(&result, "partnerBySerial", serial); err != nil {
-			t.Fatal(err)
-		} else if showStakeInfo == true {
+		assert.NoError(t, contract.Call(&result, "partnerBySerial", serial))
+		if showStakeInfo == true {
 			result.log(serial, t)
 		}
 		return &result
@@ -268,28 +297,21 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 
 		//send wemix for testing,
 		amount := new(big.Int).Mul(unitStaking, new(big.Int).SetInt64(int64(i+1)))
-		if r, err := contract.Execute(nil, "transfer", partner, amount); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > error transfer wemix to %s", partner.Hex())
-		}
+		r, err := contract.Execute(nil, "transfer", partner, amount)
+		assert.NoError(t, err)
+		assert.True(t, r.Status == 1)
 		waitBlock := new(big.Int).Mul(minBlockWaitingWithdrawal, new(big.Int).SetInt64(int64(i+1)))
 
 		for {
 			result := _stake(false, partner, partnerKey, waitBlock)
 
-			if result.Payer != result.Partner {
-				t.Fatalf("failed > mismatch payer:%v and partner:%v", result.Payer.Hex(), result.Partner.Hex())
-			}
-			if partner != result.Payer {
-				t.Fatalf("failed > mismatch partner:%v and payer:%v", partner.Hex(), result.Payer.Hex())
-			}
+			assert.Equal(t, result.Payer, result.Partner)
+			assert.Equal(t, partner, result.Payer)
 
 			//when all tokens received have been exhausted, terminate staking.
 			balance := (*big.Int)(nil)
-			if err := contract.Call(&balance, "balanceOf", partner); err != nil {
-				t.Fatal(err)
-			} else if balance.Sign() == 0 {
+			assert.NoError(t, contract.Call(&balance, "balanceOf", partner))
+			if balance.Sign() == 0 {
 				break
 			}
 		}
@@ -306,12 +328,8 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 		for {
 			result := _stake(true, partner, contract.OwnerKey, waitBlock)
 
-			if result.Payer == result.Partner {
-				t.Fatalf("failed > equal payer:%v, partner:%v", result.Payer.Hex(), result.Partner.Hex())
-			}
-			if contract.Owner != result.Payer {
-				t.Fatalf("failed > mismatch sender:%v, payer:%v", contract.Owner.Hex(), result.Payer.Hex())
-			}
+			assert.NotEqual(t, result.Payer, result.Partner)
+			assert.Equal(t, contract.Owner, result.Payer)
 
 			amount = new(big.Int).Sub(amount, result.BalanceStaking)
 			if amount.Sign() == 0 {
@@ -322,12 +340,8 @@ func testStake(t *testing.T, contract *backend.Contract, showStakeInfo bool) typ
 
 	//Compare the number of block partners registered with the number registered on the blockchain.
 	partnersNumber := (*big.Int)(nil)
-	if err := contract.Call(&partnersNumber, "partnersNumber"); err != nil {
-		t.Fatal(err)
-	}
-	if partnersNumber.Cmp(new(big.Int).SetInt64(countExecuteStake)) != 0 {
-		t.Fatalf("failed > mismatch partnersNumber, expected:%v, got:%v", countExecuteStake, partnersNumber)
-	}
+	assert.NoError(t, contract.Call(&partnersNumber, "partnersNumber"))
+	assert.True(t, partnersNumber.Cmp(new(big.Int).SetInt64(countExecuteStake)) == 0)
 
 	return partnerKeyMap
 }
@@ -337,11 +351,9 @@ func TestWemixWithdraw(t *testing.T) {
 	contract := depolyWemix(t)
 
 	//change withdrawalWaitingMinBlockd short for testing.
-	if r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(1000)); err != nil {
-		t.Fatal(err)
-	} else if r.Status != 1 {
-		t.Fatalf("failed > execute change_minBlockWaitingWithdrawal, receipt.Status : %d", r.Status)
-	}
+	r, err := contract.Execute(nil, "change_minBlockWaitingWithdrawal", new(big.Int).SetUint64(1000))
+	assert.NoError(t, err)
+	assert.True(t, r.Status == 1)
 
 	partnerKeyMap := testStake(t, contract, false)
 
@@ -349,20 +361,15 @@ func TestWemixWithdraw(t *testing.T) {
 	stakes.loadAllStake(t, contract)
 
 	contractBalance := (*big.Int)(nil)
-	if err := contract.Call(&contractBalance, "balanceOf", contract.Address); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&contractBalance, "balanceOf", contract.Address))
 
 	totalStakeBalance := new(big.Int)
 	for i := 0; i < len(stakes); i++ {
 		totalStakeBalance.Add(totalStakeBalance, stakes[i].BalanceStaking)
 	}
 
-	if totalStakeBalance.Cmp(contractBalance) != 0 {
-		t.Fatalf("failed > mismatch balance of token contract between total stake balance, contract:%v, total:%v", contractBalance, totalStakeBalance)
-	} else {
-		t.Logf("ok > contract's balance: %v, total stake balance:%v", contractBalance, totalStakeBalance)
-	}
+	assert.True(t, totalStakeBalance.Cmp(contractBalance) == 0)
+	t.Logf("ok > contract's balance: %v, total stake balance:%v", contractBalance, totalStakeBalance)
 
 	for {
 		for i, s := range stakes {
@@ -371,24 +378,19 @@ func TestWemixWithdraw(t *testing.T) {
 				key = partnerKeyMap[s.Payer]
 			}
 
-			if r, err := contract.Execute(key, "withdraw", s.Serial); err != nil {
-				t.Fatal(err)
+			r, err := contract.Execute(key, "withdraw", s.Serial)
+			assert.NoError(t, err)
+
+			block := contract.Backend.Blockchain().CurrentBlock().Header().Number
+			blockWithdrawable := new(big.Int).Add(s.BlockStaking, s.BlockWaitingWithdrawal)
+			if r.Status == 1 {
+				assert.True(t, block.Cmp(blockWithdrawable) >= 0)
+				t.Logf("ok > withdrawal : %v", s.Serial)
+				stakes[i] = stakes[len(stakes)-1]
+				stakes = stakes[:len(stakes)-1]
+				break
 			} else {
-				block := contract.Backend.Blockchain().CurrentBlock().Header().Number
-				blockWithdrawable := new(big.Int).Add(s.BlockStaking, s.BlockWaitingWithdrawal)
-				if r.Status == 1 {
-					if block.Cmp(blockWithdrawable) < 0 {
-						t.Fatalf("failed > withdrawal blockWithdrawable:%v, currentBlock:%v", blockWithdrawable, block)
-					}
-					t.Logf("ok > withdrawal : %v", s.Serial)
-					stakes[i] = stakes[len(stakes)-1]
-					stakes = stakes[:len(stakes)-1]
-					break
-				} else {
-					if block.Cmp(blockWithdrawable) >= 0 {
-						t.Fatal("failed > withdrawal", "index", i, "block", block, "blockWithdrawable", blockWithdrawable, "BlockStaking", s.BlockStaking, "BlockWaitingWithdrawal", s.BlockWaitingWithdrawal)
-					}
-				}
+				assert.True(t, block.Cmp(blockWithdrawable) < 0)
 			}
 		}
 
@@ -402,17 +404,12 @@ func TestWemixWithdraw(t *testing.T) {
 
 	for staker, key := range partnerKeyMap {
 		balance := (*big.Int)(nil)
-		if err := contract.Call(&balance, "balanceOf", staker); err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, contract.Call(&balance, "balanceOf", staker))
 		if balance.Sign() > 0 {
-			if r, err := contract.Execute(key, "transfer", contract.Owner, balance); err != nil {
-				t.Fatal(err)
-			} else if r.Status != 1 {
-				t.Fatal("failed > execute transfer to onwer")
-			} else {
-				t.Log("ok > return token to owner")
-			}
+			r, err := contract.Execute(key, "transfer", contract.Owner, balance)
+			assert.NoError(t, err)
+			assert.True(t, r.Status == 1)
+			t.Log("ok > return token to owner")
 		}
 	}
 }
@@ -428,123 +425,105 @@ func testMint(t *testing.T, contract *backend.Contract) {
 				continue
 			}
 			b := (*big.Int)(nil)
-			if err := contract.Call(&b, "balanceOf", s.Partner); err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, contract.Call(&b, "balanceOf", s.Partner))
 			m[s.Partner] = b
 		}
 		return m
 	}()
 
 	wemix := common.Address{}
-	if err := contract.Call(&wemix, "wemix"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&wemix, "wemix"))
 
 	balanceWemix := func() *big.Int {
 		b := (*big.Int)(nil)
-		if err := contract.Call(&b, "balanceOf", wemix); err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, contract.Call(&b, "balanceOf", wemix))
 		return b
 	}()
 
 	ecoFund := common.Address{}
-	if err := contract.Call(&ecoFund, "ecoFund"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&ecoFund, "ecoFund"))
 
 	balanceEcoFund := func() *big.Int {
 		b := (*big.Int)(nil)
-		if err := contract.Call(&b, "balanceOf", ecoFund); err != nil {
-			t.Fatal(err)
-		}
+		assert.NoError(t, contract.Call(&b, "balanceOf", ecoFund))
 		return b
 	}()
 
 	mintToPartner := (*big.Int)(nil)
-	if err := contract.Call(&mintToPartner, "mintToPartner"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&mintToPartner, "mintToPartner"))
 
 	mintToWemix := (*big.Int)(nil)
-	if err := contract.Call(&mintToWemix, "mintToWemix"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&mintToWemix, "mintToWemix"))
 
 	mintToEcoFund := (*big.Int)(nil)
-	if err := contract.Call(&mintToEcoFund, "mintToEcoFund"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&mintToEcoFund, "mintToEcoFund"))
 
 	nextPartnerToMint := (*big.Int)(nil)
-	if err := contract.Call(&nextPartnerToMint, "nextPartnerToMint"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&nextPartnerToMint, "nextPartnerToMint"))
+
+	blockUnitForMint := (*big.Int)(nil)
+	assert.NoError(t, contract.Call(&blockUnitForMint, "blockUnitForMint"))
+
 	indexNext := int(nextPartnerToMint.Uint64())
+	totalMinted := new(big.Int)
+	countExpectedBalance := func() {
+		if len(stakes) == 0 {
+			return
+		}
+
+		if indexNext >= len(stakes) {
+			indexNext = 0
+		}
+
+		s := stakes[indexNext]
+		balancePartners[s.Partner].Add(balancePartners[s.Partner], new(big.Int).Mul(mintToPartner, blockUnitForMint))
+		totalMinted.Add(totalMinted, new(big.Int).Mul(mintToPartner, blockUnitForMint))
+		indexNext++
+
+		balanceWemix.Add(balanceWemix, new(big.Int).Mul(mintToWemix, blockUnitForMint))
+		totalMinted.Add(totalMinted, new(big.Int).Mul(mintToWemix, blockUnitForMint))
+		balanceEcoFund.Add(balanceEcoFund, new(big.Int).Mul(mintToEcoFund, blockUnitForMint))
+		totalMinted.Add(totalMinted, new(big.Int).Mul(mintToEcoFund, blockUnitForMint))
+	}
 
 	initialTotalSupply := (*big.Int)(nil)
-	if err := contract.Call(&initialTotalSupply, "totalSupply"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&initialTotalSupply, "totalSupply"))
 
 	startBlock := (*big.Int)(nil)
-	if err := contract.Call(&startBlock, "blockToMint"); err != nil {
-		t.Fatal(err)
-	}
-	timesMinting := uint64(1000)
+	assert.NoError(t, contract.Call(&startBlock, "blockToMint"))
+
+	timesMinting := uint64(210)
 
 	for i := uint64(0); i < timesMinting; i++ {
-		contract.Backend.Commit() //make block
-		key, _ := crypto.GenerateKey()
-		if r, err := contract.Execute(key, "mint"); err != nil {
-			t.Fatal(err)
-		} else if r.Status != 1 {
-			t.Fatalf("failed > execute mint, receipt,Status : %d", r.Status)
+		blockToMint := (*big.Int)(nil)
+		assert.NoError(t, contract.Call(&blockToMint, "blockToMint"))
+
+		currentBlock := contract.Backend.Blockchain().CurrentBlock().Header().Number
+		if currentBlock.Cmp(blockToMint) < 0 {
+			commitCnt := new(big.Int).Sub(blockToMint, contract.Backend.Blockchain().CurrentBlock().Header().Number)
+
+			for b := uint64(0); b < commitCnt.Uint64(); b++ {
+				contract.Backend.Commit() //make block
+			}
 		}
+		key, _ := crypto.GenerateKey()
+		r, err := contract.Execute(key, "mint")
+		assert.NoError(t, err)
+		assert.True(t, r.Status == 1)
+		countExpectedBalance()
 	}
 	endBlock := (*big.Int)(nil)
-	if err := contract.Call(&endBlock, "blockToMint"); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, contract.Call(&endBlock, "blockToMint"))
 
-	pendingBlock := (*big.Int)(nil)
-	if err := contract.Call(&pendingBlock, "pendingBlock"); err != nil {
-		t.Fatal(err)
-	}
-	if pendingBlock.Sign() != 0 {
-		t.Fatal("failed > pending block is remained")
-	}
-
-	totalMinted := new(big.Int)
-
-	//expected
-	for i := startBlock.Uint64(); i < endBlock.Uint64(); i++ {
-		if len(stakes) > 0 {
-			if indexNext >= len(stakes) {
-				indexNext = 0
-			}
-			s := stakes[indexNext]
-			balancePartners[s.Partner].Add(balancePartners[s.Partner], mintToPartner)
-			totalMinted.Add(totalMinted, mintToPartner)
-			indexNext++
-		}
-		balanceWemix.Add(balanceWemix, mintToWemix)
-		totalMinted.Add(totalMinted, mintToWemix)
-		balanceEcoFund.Add(balanceEcoFund, mintToEcoFund)
-		totalMinted.Add(totalMinted, mintToEcoFund)
-	}
+	isMintable := bool(false)
+	assert.NoError(t, contract.Call(&isMintable, "isMintable"))
+	assert.True(t, isMintable == false)
 
 	checkBalance := func(tag string, addr common.Address, expected *big.Int) {
 		got := (*big.Int)(nil)
-		if err := contract.Call(&got, "balanceOf", addr); err != nil {
-			t.Fatal(err)
-		}
-		if expected.Cmp(got) != 0 {
-			t.Fatalf("failed > mismatch %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
-		} else {
-			t.Logf("ok > %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
-		}
+		assert.NoError(t, contract.Call(&got, "balanceOf", addr))
+		assert.True(t, expected.Cmp(got) == 0)
+		t.Logf("ok > %s(%s) balance  expected:%v, got:%v", tag, addr.Hex(), expected, got)
 	}
 
 	for a, expected := range balancePartners {
@@ -554,22 +533,16 @@ func testMint(t *testing.T, contract *backend.Contract) {
 	checkBalance("ecoFund", ecoFund, balanceEcoFund)
 
 	totalSupply := (*big.Int)(nil)
-	if err := contract.Call(&totalSupply, "totalSupply"); err != nil {
-		t.Fatal(err)
-	} else {
-		expected := new(big.Int).Add(initialTotalSupply, totalMinted)
-		if totalSupply.Cmp(expected) != 0 {
-			t.Fatalf("failed > mismatch totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
-		} else {
-			t.Logf("ok > match totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
-		}
-	}
+	assert.NoError(t, contract.Call(&totalSupply, "totalSupply"))
+	expected := new(big.Int).Add(initialTotalSupply, totalMinted)
+	assert.True(t, totalSupply.Cmp(expected) == 0)
+	t.Logf("ok > match totalSupply and expected totalSupply after mint, got :%d, expectd: %d", totalSupply, expected)
 }
 
 //After registering block partners, do minting test and check the amount of minting.
 func TestWemixMint(t *testing.T) {
 	contract := depolyWemix(t)
-	testStake(t, contract, false)
+	testStake(t, contract, true)
 
 	testMint(t, contract)
 }
@@ -577,6 +550,5 @@ func TestWemixMint(t *testing.T) {
 //Test minting without block partner and check minting amount.
 func TestWemixMintWithoutPartner(t *testing.T) {
 	contract := depolyWemix(t)
-
 	testMint(t, contract)
 }
